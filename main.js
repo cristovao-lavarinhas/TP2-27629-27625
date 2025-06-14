@@ -9,6 +9,9 @@ class Pacman extends Phaser.Scene {
     this.speed = 170;
     this.intersections = [];
     this.nextIntersection = null;
+    
+    this.PINKY_SCATTER_TARGET = {x:432,y:80};
+
   }
 
   preload() {
@@ -35,6 +38,11 @@ class Pacman extends Phaser.Scene {
       frameHeight: 32,
     });
     this.load.image("dot", "pacman_items/dot.png");
+
+    this.load.spritesheet("pinkGhost", "ghost/pink ghost/spr_ghost_pink_0.png", {
+      frameWidth: 32,
+      frameHeight: 32,
+    });
   }
 
   create() {
@@ -65,6 +73,154 @@ class Pacman extends Phaser.Scene {
     this.physics.add.overlap(this.pacman, this.dots, this.eatDot, null, this);
     this.cursors = this.input.keyboard.createCursorKeys();
     this.detectIntersections();
+    this.inicializeGhosts(layer);
+    let startPoint = {x:232,y:240};
+    this.pinkGhost.path = this.aStartAlgorithm(startPoint,this.PINKY_SCATTER_TARGET);
+    this.pinkGhost.nextIntersection = this.pinkGhost.path.shift();
+  }
+
+  update() {
+    this.handleDirectionInput();
+    this.handlePacmanMovement();
+    this.teleportPacmanAcrossWorldBounds();
+    if(this.pinkGhost.enteredMaze) {
+      this.handleGhostDirection(this.pinkGhost);
+      this.handleGhostMovement(this.pinkGhost);
+    }
+  }
+
+  enterMaze(ghost) {
+    ghost.setPosition(232,280);
+    ghost.enteredMaze = true;
+  }
+
+  initializeGhost(x,y,spriteKey,layer) {
+    const ghost = this.physics.add.sprite(x,y,spriteKey);
+    this.physics.add.collider(ghost,layer);
+    ghost.direction = "right";
+    ghost.previousDirection = "right";
+    ghost.nextIntersection = null;
+    ghost.enteredMaze = false;
+    return ghost;
+  }
+
+  isInghostHouse(x,y) {
+    if((x<=262 && x>=208) && (y<=288 && y>240))
+      return true;
+    else return false;
+  }
+
+  aStarAlgorithm(start,target) {
+    function findNearestIntersection(point,intersections) {
+      let nearest = null;
+      let minDist = Infinity;
+      for(const intersection of intersections) {
+        const dist = Math.abs(intersection.x-point.x)+Math.abs(intersection.y-point.y);
+        if(dist<minDist) {
+          minDist = dist;
+          nearest = intersection;
+        }
+      }
+      return nearest;
+    }
+    const startIntersection = findNearestIntersection(start,this.intersections);
+    if(!startIntersection) {
+      return[];
+    }
+    const openList = [];
+    const closedList = new Set();
+    const cameFrom = new Map();
+    const gScore = new Map();
+    openList.push({node:startIntersection,g:0,f:heuristic(startIntersection,target)});
+    gScore.set(JSON.stringify(startIntersection),0);
+    function heuristic(node,target) {
+      return Math.abs(node.x - target.x)+Math.abs(node.y-target.y);
+    }
+    while(openList.length>0) {
+      openList.sort((a,b)=>a.f-b.f);
+      const current = openList.shift().node;
+      if(current.x === target.x && current.y === target.y) {
+        const path = [];
+        let currentNode = current;
+        while(cameFrom.has(JSON.stringify(currentNode))) {
+          path.push(currentNode);
+          currentNode = cameFrom.get(JSON.stringify(currentNode));
+        }
+        path.push(startIntersection);
+        return path.reverse();
+      }
+      closedList.add(JSON.stringify(current));
+      const currentIntersection = this.intersections.find(i=>i.x ===current.x && i.y === current.y);
+      if(currentIntersection) {
+        for(const direction of currentIntersection.openPaths) {
+          const neighbor = this.getNextIntersection(current.x,current.y,direction);
+          if(neighbor && !closedList.has(JSON.stringify(neighbor))) {
+            const  tentativeGScore = gScore.get(JSON.stringify(current))+1;
+            if(!gScore.has(JSON.stringify(neighbor)) || tentativeGScore<gScore.get(JSON.stringify(neighbor))) {
+              gScore.set(JSON.stringify(neighbor),tentativeGScore);
+              const fScore = tentativeGScore+heuristic(neighbor,target);
+              openList.push({node:neighbor,g:tentativeGScore,f: fScore});
+              cameFrom.set(JSON.stringify(neighbor),current);
+            }
+          }
+        }
+      }
+    }
+    return [];
+  }
+
+  getNextIntersection(currentX,currentY,previousDirection) {
+    let filteredIntersections;
+    const isUp = previousDirection === "up";
+    const isDown = previousDirection === "down";
+    const isLeft = previousDirection === "left";
+    const isRight = previousDirection === "right";
+    filteredIntersections = this.intersections.filter((intersection)=>{
+      return(
+        ((isUp && intersection.x === currentX && intersection.y<currentY)||
+        (isDown && intersection.x === currentX && intersection.y>currentY) ||
+        (isLeft && intersection.y === currentY && intersection.x<currentX) ||
+        (isRight && intersection.y === currentY && intersection.x>currentX))
+      );
+    })
+    .sort((a,b)=>{
+      if(isUp || isDown) {
+        return isUp ? b.y-a.y:a.y-b.y;
+      } else {
+        return isLeft ? b.x-a.x:a.x-b.x;
+      }
+    });
+    return filteredIntersections ? filteredIntersections[0]:null;
+  }
+
+  handleGhostDirection(ghost) {
+    if(this.isInghostHouse(ghost.x,ghost.y)){
+      this.changeGhostDirection(ghost,0,-this.speed*0.8);
+    }
+    if(ghost.body.velocity.x==0 && ghost.body.velocity.y == 0)
+      this.adjustGhostPosition(ghost);
+    let isAtIntersection = this.isGhostAtIntersection(ghost.nextIntersection,ghost.x,ghost.y,ghost.direction);
+    if(isAtIntersection) {
+      if((this.PINKY_SCATTER_TARGET.x === ghost.nextIntersection.x) && (this.PINKY_SCATTER_TARGET.y === ghost.nextIntersection.y) && this.currentMode === "scatter")
+        return;
+      if((this.BLINKY_SCATTER_TARGET.x === ghost.nextIntersection.x) && (this.BLINKY_SCATTER_TARGET.y === ghost.nextIntersection.y) && this.currentMode === "scatter")
+        return;
+      if((this.INKY_SCATTER_TARGET.x === ghost.nextIntersection.x) && (this.INKY_SCATTER_TARGET.y === ghost.nextIntersection.y) && this.currentMode === "scatter")
+        return;
+      if((this.CLYDE_SCATTER_TARGET.x === ghost.nextIntersection.x) && (this.CLYDE_SCATTER_TARGET.y === ghost.nextIntersection.y) && this.currentMode === "scatter")
+        return;
+
+      if(ghost.texture.key==="redGhost" && this.currentMode == "chase") {
+        let chaseTarget = {x:this.pacman.x,y:this.pacman.y};
+        this.updateGhostPath(ghost,chaseTarget);      
+      }
+
+      if(ghost.path.length>0)
+        ghost.nextIntersection = ghost.path.shift();
+      let newDirection = this.getGhostNextDirection(ghost,ghost.nextIntersection);
+      ghost.previousDirection = ghost.direction;
+      ghost.direction = newDirection;
+    }
   }
 
   populateBoardAndTrackEmptyTiles(layer) {
@@ -247,12 +403,6 @@ class Pacman extends Phaser.Scene {
 
   isPointClear(x, y) {
     return this.isPathOpenAroundPoint(x, y);
-  }
-
-  update() {
-    this.handleDirectionInput();
-    this.handlePacmanMovement();
-    this.teleportPacmanAcrossWorldBounds();
   }
 
   teleportPacmanAcrossWorldBounds() {
