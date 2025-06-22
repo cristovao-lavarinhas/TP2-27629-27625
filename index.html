@@ -1,24 +1,100 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt">
 
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pacman</title>
-  <link rel="stylesheet" href="style.css">
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser-arcade-physics.min.js"
-    integrity="sha512-HUbl7YU9UJEwoU8NQpzzBxd+I+qSbyiUKojO4RHfGzIadFeNcDcHc5nAINtX8dsHAXJn/2pqhwwiEWFXl+6OgA=="
-    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-
+  
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pac-Man</title>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
 </head>
 
 <body>
-  <div id="container">
+<!-- MENU PAUSA -->
+  <div id="pause-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2>JOGO EM PAUSA</h2>
+      <button onclick="resumeGame()">RETOMAR</button>
+      <button onclick="goToMenu()">MENU INICIAL</button>
+    </div>
+  </div>
+  
 
+
+  <!-- MENU INICIAL -->
+  <div id="menu-container">
+    <img src="assets/img/pacman_logo.png" alt="Pac-Man Logo" id="logo">
+    <ul id="menu-options">
+      <li onclick="showDifficulty()">INICIAR</li>
+      <li id="instrucoesBtn">INSTRUÇÕES</li>
+      <li id="definicoesBtn">DEFINIÇÕES</li>
+    </ul>
+    <p class="credits">TM</p>
+    <p class="credits">Filipe Fernandes<br />Cristovão Lavarinhas</p>
   </div>
 
-  <script src="main.js"></script>
+  <!-- ESCOLHA DE DIFICULDADE -->
+  <div id="difficulty-container" class="hidden">
+    <h2>SELECT DIFFICULTY</h2>
+    <div class="difficulty-buttons">
+      <button onclick="startGame('easy')">FACIL</button>
+      <button onclick="startGame('normal')">NORMAL</button>
+      <button onclick="startGame('hard')">DIFICIL</button>
+    </div>
+    <button class="back-button" onclick="backToMenu()">VOLTAR</button>
+    </div>
+
+
+
+  <div id="game-over-container" class="modal hidden">
+    <div class="modal-content">
+      <h2 id="game-over-title">PERDESTE</h2>
+      <button onclick="restartGame()">RECOMEÇAR</button>
+      <button onclick="goToMenu()">MENU</button>
+    </div>
+  </div>
+  
+
+  <!-- MODAL: INSTRUÇÕES -->
+  <div id="modalInstrucoes" class="modal hidden">
+    <div class="modal-content" style="position: relative;">
+      <span class="fecharModal">&times;</span>
+      <h2>Instruções</h2>
+      <p>Usa as setas do teclado para mover o Pac-Man.</p>
+      <p>Evita os fantasmas, come os pontos e aproveita os power pills para os derrotar!</p>
+    </div>
+  </div>
+
+  <!-- MODAL: DEFINIÇÕES -->
+  <div id="modalDefinicoes" class="modal hidden">
+    <div class="modal-content" style="position: relative;">
+      <span class="fecharModal">&times;</span>
+      <h2>DEFINIÇÕES</h2>
+      <label><input type="checkbox" id="musicToggle" onchange="toggleMusic()"> MUSICA</label>
+      <br />
+      <label>VOLUME: <input type="range" min="0" max="1" step="0.01" value="0.5" id="volumeSlider"
+          onchange="setVolume(this.value)"></label>
+    </div>
+  </div>
+
+  <!-- MÚSICA DE FUNDO -->
+  <audio id="bg-music" loop>
+    <source src="assets/music/background.mp3" type="audio/mpeg">
+  </audio>
+
+  <!-- SCRIPTS -->
+    <div id="game-container" class="hidden">
+    <script src="main.js"></script>
+  </div>   
+  <script src="menu.js"></script>
+  <script src="ui.js"></script>
+  <script src="settings.js"></script>
+  <script src="gameManager.js"></script>
+
 </body>
 
 </html>

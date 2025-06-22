@@ -2,12 +2,34 @@ class Pacman extends Phaser.Scene {
   constructor() {
     super();
     this.Pacman = null;
+  }
+
+  init(data) {
+    this.difficulty = data.difficulty || "normal";
+    this.gameOver = false;
+    this.score = 0;
+    this.dotsEaten = 0;
+    this.isPaused = false;
+  }
+
+  initModeTimers() {
+    this.setModeTimer(this.scatterModeDuration);
+  }
+
+  reiniciarEstadoJogo() {
     this.direction = "null";
     this.previousDirection = "left";
     this.blockSize = 16;
     this.board = [];
     this.speed = 120;
-    this.ghostSpeed = this.speed * 1.2;
+
+    const speedLevels = {
+      easy: 80,
+      normal: 120,
+      hard: 160,
+    };
+    this.ghostSpeed = speedLevels[this.difficulty] || 120;
+
     this.intersections = [];
     this.nextIntersection = null;
     this.oldNextIntersection = null;
@@ -17,24 +39,19 @@ class Pacman extends Phaser.Scene {
     this.INKY_SCATTER_TARGET = { x: 432, y: 528 };
     this.CLYDE_SCATTER_TARGET = { x: 32, y: 528 };
 
-    this.scatterModeDuration = 7000;
+    this.scatterModeDuration = 3000;
     this.chaseModeDuration = 20000;
     this.scaredModeDuration = 9000;
     this.entryDelay = 7000;
     this.respawnDelay = 5000;
     this.modeTimer = null;
-    this.currentMode = "scatter";
-    this.initModeTimers();
+    this.currentMode = "chase";
 
     this.lives = 3;
     this.isPacmanAlive = true;
     this.hasRespawned = false;
     this.score = 0;
     this.highScore = parseInt(localStorage.getItem("pacmanHighScore")) || 0;
-  }
-
-  initModeTimers() {
-    this.setModeTimer(this.scatterModeDuration);
   }
 
   setModeTimer(duration) {
@@ -81,8 +98,6 @@ class Pacman extends Phaser.Scene {
   }
 
   getChaseTarget(ghost) {
-    //let chaseTarget = null;
-
     if (ghost.texture.key === "redGhost") {
       return { x: this.pacman.x, y: this.pacman.y };
     }
@@ -244,7 +259,6 @@ class Pacman extends Phaser.Scene {
     this.load.image("scaredGhost", "ghost/ghost afraid/spr_afraid_0.png");
     this.load.image("scaredGhostWhite", "ghost/ghost afraid/spr_afraid_1.png");
 
-    this.load.image("endGameImage", "pac man text/spr_message_2.png");
     this.load.image(
       "lifeCounter1",
       "pac man & life counter & death/pac man life counter/spr_lifecounter_0.png"
@@ -255,10 +269,14 @@ class Pacman extends Phaser.Scene {
     );
   }
   create() {
+    this.reiniciarEstadoJogo();
+    this.gameOver = false;
     this.map = this.make.tilemap({ key: "map" });
     const tileset = this.map.addTilesetImage("pacman tileset");
-    const layer = this.map.createLayer("Tile Layer 1", [tileset]);
-    layer.setCollisionByExclusion(-1, true);
+    this.layer = this.map.createLayer("Tile Layer 1", [tileset]);
+    this.layer.setCollisionByExclusion(-1, true);
+
+    // Criar Pac-Man
     this.pacman = this.physics.add.sprite(230, 432, "pacman");
     this.anims.create({
       key: "pacmanAnim",
@@ -285,10 +303,14 @@ class Pacman extends Phaser.Scene {
       repeat: 0,
     });
 
-    this.physics.add.collider(this.pacman, layer);
+    // Física
+    this.physics.add.collider(this.pacman, this.layer);
+
+    // Pontos e power pills
     this.dots = this.physics.add.group();
     this.powerPills = this.physics.add.group();
-    this.populateBoardAndTrackEmptyTiles(layer);
+    this.populateBoardAndTrackEmptyTiles(this.layer);
+
     this.physics.add.overlap(this.pacman, this.dots, this.eatDot, null, this);
     this.physics.add.overlap(
       this.pacman,
@@ -297,10 +319,33 @@ class Pacman extends Phaser.Scene {
       null,
       this
     );
+
+    // Input
+    if (this.input.keyboard) {
+      this.input.keyboard.removeAllListeners();
+    }
     this.cursors = this.input.keyboard.createCursorKeys();
+
+    // Reiniciar estado do jogo
+    this.score = 0;
+    this.gameOver = false;
+    this.isPacmanAlive = true;
+    this.direction = "null";
+    this.previousDirection = "left";
+
+    // Dificuldade (usada na velocidade dos fantasmas)
+    const speedLevels = {
+      easy: 50,
+      normal: 160,
+      hard: 250,
+    };
+    this.ghostSpeed = speedLevels[this.difficulty] || 120;
+
+    // Interseções e fantasmas
     this.detectIntersections();
-    this.initializeGhosts(layer);
-    let startPoint = { x: 232, y: 240 };
+    this.initializeGhosts(this.layer);
+
+    const startPoint = { x: 232, y: 240 };
     this.pinkGhost.path = this.aStarAlgorithm(
       startPoint,
       this.PINKY_SCATTER_TARGET
@@ -341,28 +386,91 @@ class Pacman extends Phaser.Scene {
         this
       );
     });
+
+    // Vidas e score
     this.lifeCounter1 = this.add.image(32, 32, "lifeCounter1");
     this.lifeCounter2 = this.add.image(56, 32, "lifeCounter2");
 
     const cam = this.cameras.main;
 
-    // Texto do score (centro, topo)
     this.scoreText = this.add
       .text(cam.width / 2, 16, "Score: 0", {
         font: "16px Arial",
         fill: "#ffffff",
       })
-      .setOrigin(0.5, 0) // centraliza horizontalmente
+      .setOrigin(0.5, 0)
       .setScrollFactor(0);
 
-    // Texto do high score (direita, topo)
     this.highScoreText = this.add
       .text(cam.width - 16, 16, "High-Score: " + this.highScore, {
         font: "16px Arial",
         fill: "#ffff00",
       })
-      .setOrigin(1, 0) // ancoragem canto superior direito
+      .setOrigin(1, 0)
       .setScrollFactor(0);
+
+    this.input.keyboard.removeAllListeners(); // Limpa listeners antigos
+    this.cursors = this.input.keyboard.createCursorKeys(); // Recria inputs
+
+    this.input.keyboard.on("keydown-P", () => {
+      if (!this.isPaused) {
+        this.isPaused = true;
+        this.physics.pause();
+
+        // Guardar velocidades
+        this.pacmanVelocity = {
+          x: this.pacman.body.velocity.x,
+          y: this.pacman.body.velocity.y,
+        };
+
+        this.ghosts.forEach((ghost) => {
+          ghost.storedDirection = ghost.direction;
+          ghost.storedVelocity = {
+            x: ghost.body.velocity.x,
+            y: ghost.body.velocity.y,
+          };
+        });
+
+        // Mostrar modal
+        document.getElementById("pause-modal").classList.remove("hidden");
+      }
+    });
+  }
+
+  resumeGameFromPause() {
+    // Primeiro: despausar a física
+    this.physics.resume();
+
+    // Segundo: indicar que já não está pausado
+    this.isPaused = false;
+
+    // Restaurar direção do Pac-Man com base na última velocidade
+    if (this.pacmanVelocity) {
+      this.pacman.setVelocity(this.pacmanVelocity.x, this.pacmanVelocity.y);
+
+      if (this.pacmanVelocity.x < 0) this.direction = "left";
+      else if (this.pacmanVelocity.x > 0) this.direction = "right";
+      else if (this.pacmanVelocity.y < 0) this.direction = "up";
+      else if (this.pacmanVelocity.y > 0) this.direction = "down";
+    }
+
+    // Restaurar direção e velocidade dos fantasmas
+    this.ghosts.forEach((ghost) => {
+      if (ghost.storedVelocity) {
+        ghost.setVelocity(ghost.storedVelocity.x, ghost.storedVelocity.y);
+      }
+      if (ghost.storedDirection) {
+        ghost.direction = ghost.storedDirection;
+      }
+    });
+
+    this.handlePacmanMovement();
+    this.ghosts.forEach((g) => this.handleGhostMovement(g));
+
+    setTimeout(() => {
+      this.handlePacmanMovement();
+      this.ghosts.forEach((g) => this.handleGhostMovement(g));
+    }, 100);
   }
 
   initializeGhosts(layer) {
@@ -590,10 +698,26 @@ class Pacman extends Phaser.Scene {
     this.powerPills.create(32, 480, "powerPill");
     this.powerPills.create(432, 480, "powerPill");
   }
+
+  checkVictory250() {
+    if (this.dotsEaten >= 250) {
+      this.physics.pause();
+      this.pacman.setVelocity(0);
+      this.pacman.anims?.stop?.();
+
+      setTimeout(() => {
+        if (typeof window.showGameOver === "function") {
+          window.showGameOver(true);
+        }
+      }, 1000);
+    }
+  }
   eatDot(pacman, dot) {
     dot.disableBody(true, true);
     this.score += 10;
     this.scoreText.setText("Score: " + this.score);
+    this.dotsEaten++;
+    this.checkVictory250();
 
     // checa high score
     if (this.score > this.highScore) {
@@ -607,6 +731,8 @@ class Pacman extends Phaser.Scene {
     powerPill.disableBody(true, true);
     this.score += 100;
     this.scoreText.setText("Score: " + this.score);
+    this.dotsEaten++;
+    this.checkVictory250();
 
     if (this.score > this.highScore) {
       this.highScore = this.score;
@@ -621,6 +747,7 @@ class Pacman extends Phaser.Scene {
       ghost.hasBeenEaten = false;
     });
   }
+
   setGhostsToScaredMode() {
     this.ghosts.forEach((ghost) => {
       // escolhe um caminho aleatório
@@ -740,50 +867,40 @@ class Pacman extends Phaser.Scene {
   }
 
   resetAfterDeath() {
-  this.lives -= 1;
-  if (this.lives === 1) this.lifeCounter1.destroy();
-  if (this.lives === 2) this.lifeCounter2.destroy();
-  if (this.lives > 0) {
-    this.pacman.setPosition(230, 432);
-    this.resetGhosts();
-    this.anims.create({
-      key: "pacmanAnim",
-      frames: [
-        { key: "pacman" },
-        { key: "pacman1" },
-        { key: "pacman2" },
-        { key: "pacman3" },
-        { key: "pacman4" },
-      ],
-      frameRate: 10,
-      repeat: -1,
-    });
-    this.pacman.play("pacmanAnim");
-    this.currentMode = "scatter";
-  } else {
-    this.pacman.destroy();
-    this.redGhost.destroy();
-    this.pinkGhost.destroy();
-    this.blueGhost.destroy();
-    this.orangeGhost.destroy();
-    this.physics.pause();
-    this.add
-      .image(
-        this.cameras.main.centerX,
-        this.cameras.main.centerY + 56,
-        "endGameImage"
-      )
-      .setOrigin(0.5);
-
-    // trigger page refresh para reiniciar o jogo
-    this.time.delayedCall(2000, () => {
-      window.location.reload();
-    });
+    this.lives -= 1;
+    if (this.lives === 1) this.lifeCounter1.destroy();
+    if (this.lives === 2) this.lifeCounter2.destroy();
+    if (this.lives > 0) {
+      this.pacman.setPosition(230, 432);
+      this.resetGhosts();
+      this.anims.create({
+        key: "pacmanAnim",
+        frames: [
+          { key: "pacman" },
+          { key: "pacman1" },
+          { key: "pacman2" },
+          { key: "pacman3" },
+          { key: "pacman4" },
+        ],
+        frameRate: 10,
+        repeat: -1,
+      });
+      this.pacman.play("pacmanAnim");
+      this.currentMode = "scatter";
+    } else {
+      this.pacman.destroy();
+      this.redGhost.destroy();
+      this.pinkGhost.destroy();
+      this.blueGhost.destroy();
+      this.orangeGhost.destroy();
+      this.physics.pause();
+      this.time.delayedCall(1000, () => {
+        showGameOver(false); // Mostra menu "PERDEU"
+      });
+    }
+    this.isPacmanAlive = true;
+    this.hasRespawned = true;
   }
-  this.isPacmanAlive = true;
-  this.hasRespawned = true;
-}
-
 
   resetGhosts() {
     this.redGhost.setPosition(232, 290);
@@ -828,6 +945,7 @@ class Pacman extends Phaser.Scene {
   }
 
   update() {
+    if (this.gameOver) return;
     if (!this.isPacmanAlive || this.lives === 0) return;
     this.handleDirectionInput();
     this.handlePacmanMovement();
@@ -1358,19 +1476,72 @@ class Pacman extends Phaser.Scene {
   }
 }
 
-const config = {
-  type: Phaser.AUTO,
-  width: 464,
-  height: 560,
-  parent: "container",
-  backgroundColor: "#000000",
-  physics: {
-    default: "arcade",
-    arcade: {
-      gravity: { y: 0 },
-      debug: false,
+function showGameOver(win = false) {
+  const modal = document.getElementById("game-over-container");
+  const title = document.getElementById("game-over-title");
+
+  title.textContent = win ? "YOU WIN!" : "GAME OVER";
+  modal.classList.remove("hidden");
+}
+
+function restartGame() {
+  document.getElementById("game-over-container").classList.add("hidden");
+  if (gameInstance) {
+    const difficulty =
+      window.selectedDifficulty === 1.0
+        ? "easy"
+        : window.selectedDifficulty === 1.8
+        ? "hard"
+        : "normal";
+
+    gameInstance.scene.start("default", { difficulty }); // ✅ CORRETO
+  }
+}
+
+function goToMenu() {
+  document.getElementById("game-over-container").classList.add("hidden");
+  document.getElementById("game-container").classList.add("hidden");
+  document.getElementById("menu-container").classList.remove("hidden");
+
+  if (gameInstance) {
+    gameInstance.destroy(true);
+    gameInstance = null;
+  }
+}
+
+let gameInstance = null;
+
+function startGame(difficulty) {
+  document.getElementById("difficulty-container").classList.add("hidden");
+  document.getElementById("game-container").classList.remove("hidden");
+
+  // Define multiplicador da dificuldade
+  let ghostSpeedMultiplier = 1.2;
+  if (difficulty === "easy") ghostSpeedMultiplier = 1.0;
+  if (difficulty === "hard") ghostSpeedMultiplier = 1.8;
+
+  // Passar valor global para a cena
+  window.selectedDifficulty = ghostSpeedMultiplier;
+
+  if (gameInstance) {
+    gameInstance.destroy(true);
+  }
+
+  const config = {
+    type: Phaser.AUTO,
+    width: 464,
+    height: 560,
+    parent: "game-container",
+    backgroundColor: "#000000",
+    physics: {
+      default: "arcade",
+      arcade: {
+        gravity: { y: 0 },
+        debug: false,
+      },
     },
-  },
-  scene: Pacman,
-};
-const game = new Phaser.Game(config);
+    scene: Pacman, // usa a tua classe original
+  };
+
+  gameInstance = new Phaser.Game(config);
+}
